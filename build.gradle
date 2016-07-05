@@ -1,0 +1,28 @@
+group 'com.simservice'
+version '1.0-SNAPSHOT'
+def name = 'cert-installer'
+
+def appName = name + '-' + version + '.jar'
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+}
+
+apply plugin: 'idea'
+apply plugin: 'groovy'
+
+sourceCompatibility=1.8
+targetCompatibility=1.8
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile 'org.codehaus.groovy:groovy-all:2.4.4'
+    compile 'com.google.guava:guava:19.0'
+    testCompile("junit:junit:4.12")
+}
+
