@@ -4,50 +4,32 @@ import java.io.File;
 
 public class CAATInstallDir {
 
-    private static final String START_INI = "start.ini";
+    public static final String SSL_INI = "start.d/ssl.ini";
 
-    private static final String SSL_INI = "start.d/ssl.ini";
+    public static final String SSL_DIR = "etc/ssl";
 
-    private static final String HTTPS_INI = "start.d/https.ini";
+    private final File installDir;
 
-    private static final String WEB_XML = "webapps/nexus/WEB-INF/web.xml";
+    private final File sslIni;
 
-    private File installDir;
-
-    private File startIni;
-
-    private File sslIni;
-
-    private File httpsIni;
-
-    private File webXml;
+    private final File sslDir;
 
     public CAATInstallDir(final String path) {
         this.installDir = new File(path);
-        this.startIni = new File(installDir, START_INI);
         this.sslIni = new File(installDir, SSL_INI);
-        this.httpsIni = new File(installDir, HTTPS_INI);
-        this.webXml = new File(installDir, WEB_XML);
-        assert (installDir.exists() && startIni.exists() && sslIni.exists() && httpsIni.exists() && webXml.exists());
+        this.sslDir = new File(installDir, SSL_DIR);
+        assert (installDir.exists() && sslIni.exists() && sslDir.exists() && sslDir.isDirectory());
     }
 
     public File getInstallDir() {
         return installDir;
     }
 
-    public File getStartIni() {
-        return startIni;
-    }
-
     public File getSslIni() {
         return sslIni;
     }
 
-    public File getHttpsIni() {
-        return httpsIni;
-    }
-
-    public File getWebXml() {
-        return webXml;
+    public File getSslDir() {
+        return sslDir;
     }
 }
