@@ -3,9 +3,16 @@ package com.kcura.certificates;
 import org.apache.commons.cli.*;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
+import java.util.Properties;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Strings.isNullOrEmpty;
@@ -13,7 +20,7 @@ import static com.google.common.base.Strings.isNullOrEmpty;
 /**
  * This is a driver class that accepts a number of arguments that are used to create a new keystore/truststore for CAAT
  * using the provided values.  Some values in CAAT config files will be overridden depending upon the values provided.
- *
+ * <p>
  * This class will provide support for intermediate certificates in the future.  For now, self-signed certs in PKCS12 format only.
  *
  * @author Michael Di Salvo
@@ -24,6 +31,8 @@ public class CertInstaller {
      * The default alias for the keystore/truststore/cert combination
      */
     private static final String DEF_ALIAS = "contenanalyst";
+
+    private static final String DEF_KEYSTORE_TYPE = "pkcs12";
 
     /**
      * The passed in path to the cert to import into CAAT
@@ -90,11 +99,13 @@ public class CertInstaller {
                 .build());
     }
 
-    public static void main(String...args) {
+    public static void main(String... args) {
         setValuesFromArgs(args);
         validateValues();
         createCAATDirFromValues();
         copyCertIntoCAATInstall();
+        createKeystore();
+        updateSSLIniFile();
 
         // TODO
         // Use the keytool to import into the trust chain ex
@@ -112,12 +123,24 @@ public class CertInstaller {
         CommandLineParser clp = new DefaultParser();
         try {
             CommandLine cl = clp.parse(options, args);
-            if (cl.hasOption("help")) { help(); }
-            if (cl.hasOption("certlocation")) { certlocation = cl.getOptionValue("certlocation"); }
-            if (cl.hasOption("caatlocation")) { caatlocation = cl.getOptionValue("caatlocation"); }
-            if (cl.hasOption("keystorename")) { keystorename = cl.getOptionValue("keystorename"); }
-            if (cl.hasOption("password")) { password = cl.getOptionValue("password"); }
-            if (cl.hasOption("keystorealias")) { keystorealias = cl.getOptionValue("keystorealias"); }
+            if (cl.hasOption("help")) {
+                help();
+            }
+            if (cl.hasOption("certlocation")) {
+                certlocation = cl.getOptionValue("certlocation");
+            }
+            if (cl.hasOption("caatlocation")) {
+                caatlocation = cl.getOptionValue("caatlocation");
+            }
+            if (cl.hasOption("keystorename")) {
+                keystorename = cl.getOptionValue("keystorename");
+            }
+            if (cl.hasOption("password")) {
+                password = cl.getOptionValue("password");
+            }
+            if (cl.hasOption("keystorealias")) {
+                keystorealias = cl.getOptionValue("keystorealias");
+            }
         } catch (ParseException e) {
             System.err.println("Parsing failed.  Reason: " + e.getMessage());
         }
@@ -176,7 +199,8 @@ public class CertInstaller {
                     )
             );
             System.exit(0);
-        };
+        }
+        ;
     }
 
     /**
@@ -186,6 +210,9 @@ public class CertInstaller {
         CAAT_INSTALL_DIR = new CAATInstallDir(caatlocation);
     }
 
+    /**
+     * Copy the cert from the provided path into the /etc/ssl directory of the provided CAAT Install
+     */
     private static void copyCertIntoCAATInstall() {
         try {
             Files.copy(
@@ -199,10 +226,51 @@ public class CertInstaller {
         }
     }
 
+    private static void createKeystore() {
+        try {
+            // TODO right now just pkcs12
+            KeyStore keyStore = KeyStore.getInstance(DEF_KEYSTORE_TYPE);
+            keyStore.load(null, null);
+
+//            X509Certificate cert = new X509CertImpl(new FileInputStream(importedCertFile));
+//            keyStore.setCertificateEntry(keystorealias, cert);
+
+            File newKeystoreFile = new File(CAAT_INSTALL_DIR.getSslDir(), keystorename);
+            if (newKeystoreFile.createNewFile()) {
+                keyStore.store(
+                        new FileOutputStream(newKeystoreFile),
+                        password.toCharArray()
+                );
+            }
+        } catch (KeyStoreException | IOException | NoSuchAlgorithmException | CertificateException e) {
+            System.err.println("Error when creating keystore.  Reason: " + e.getMessage());
+            System.exit(0);
+        }
+    }
+
+    private static void updateSSLIniFile() {
+        try {
+            Properties props = new Properties();
+            try (FileInputStream fis = new FileInputStream(CAAT_INSTALL_DIR.getSslIni().getPath())) {
+                props.load(fis);
+            }
+            try (FileOutputStream fos = new FileOutputStream(CAAT_INSTALL_DIR.getSslIni().getPath())) {
+                props.setProperty("jetty.keystore", "/etc/ssl/" + keystorename);
+                props.setProperty("jetty.truststore", "etc/ssl/" + keystorename);
+                props.setProperty("jetty.keystore.password", password);
+                props.setProperty("jetty.truststore.password", password);
+                props.setProperty("jetty.keymanager.password", password);
+                props.store(fos, null);
+            }
+        } catch (IOException e) {
+            System.err.println("Error when updating ssl.ini file.  Reason: " + e.getMessage());
+        }
+    }
+
     /**
      * Checks if the provided path parameter is a valid CAAT install dir by checking that the File created from the path
      * returns <code>true</code> for the following 3 conditions:
-     *
+     * <p>
      * <pre>
      *     File(path).exists()
      * </pre>
