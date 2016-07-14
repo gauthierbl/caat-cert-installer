@@ -15,7 +15,6 @@ import java.security.cert.CertificateException;
 import java.util.Properties;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Strings.isNullOrEmpty;
 
 /**
  * This is a driver class that accepts a number of arguments that are used to create a new keystore/truststore for CAAT
@@ -27,12 +26,11 @@ import static com.google.common.base.Strings.isNullOrEmpty;
  */
 public class CertInstaller {
 
-    /**
-     * The default alias for the keystore/truststore/cert combination
-     */
-    private static final String DEF_ALIAS = "contenanalyst";
-
     private static final String DEF_KEYSTORE_TYPE = "pkcs12";
+
+    private static final String KEYSTORENAME = "keystore";
+
+    private static final String DEF_KEYSTORE_PATH = "/etc/";
 
     /**
      * The passed in path to the cert to import into CAAT
@@ -45,19 +43,9 @@ public class CertInstaller {
     private static String caatlocation;
 
     /**
-     * The passed in name of the new keystore to create
-     */
-    private static String keystorename;
-
-    /**
      * The password of the keystore to create
      */
     private static String password;
-
-    /**
-     * The alias of the keystore/truststore/cert combination to create
-     */
-    private static String keystorealias;
 
     /**
      * The {@link File} that represents the CAAT install.  This is set after validation of the passed in location param
@@ -82,20 +70,10 @@ public class CertInstaller {
                 .hasArg()
                 .desc("The location of the caat install to install the cert to.")
                 .build());
-        options.addOption(Option.builder("keystorename")
-                .argName("keystorename")
-                .hasArg()
-                .desc("The name of the newly generated keystore.")
-                .build());
         options.addOption(Option.builder("password")
                 .argName("password")
                 .hasArg()
                 .desc("The password for the cert private key.  This will be used for the new keystore as well.")
-                .build());
-        options.addOption(Option.builder("keystorealias")
-                .argName("keystorealias")
-                .hasArg()
-                .desc("The alias to associate with this keystore/truststore/cert combination.")
                 .build());
     }
 
@@ -106,10 +84,6 @@ public class CertInstaller {
         copyCertIntoCAATInstall();
         createKeystore();
         updateSSLIniFile();
-
-        // TODO
-        // Use the keytool to import into the trust chain ex
-        // Update start.ini and ssl.ini files as needed
     }
 
     /**
@@ -132,14 +106,8 @@ public class CertInstaller {
             if (cl.hasOption("caatlocation")) {
                 caatlocation = cl.getOptionValue("caatlocation");
             }
-            if (cl.hasOption("keystorename")) {
-                keystorename = cl.getOptionValue("keystorename");
-            }
             if (cl.hasOption("password")) {
                 password = cl.getOptionValue("password");
-            }
-            if (cl.hasOption("keystorealias")) {
-                keystorealias = cl.getOptionValue("keystorealias");
             }
         } catch (ParseException e) {
             System.err.println("Parsing failed.  Reason: " + e.getMessage());
@@ -160,7 +128,7 @@ public class CertInstaller {
      *              <td>caatlocation</td><td><code>!null</code></td>
      *          </tr>
      *          <tr>
-     *              <td>keystorename</td><td><code>!null</code></td>
+     *              <td>KEYSTORENAME</td><td><code>!null</code></td>
      *          </tr>
      *          <tr>
      *              <td>password</td><td><code>!null</code></td>
@@ -174,13 +142,7 @@ public class CertInstaller {
     private static void validateValues() {
         checkNotNull(certlocation, "A value must be provided for the certificate location.");
         checkNotNull(caatlocation, "A value must be provided for the CAAT location.");
-        checkNotNull(keystorename, "A value must be provided for the new keystore name.");
         checkNotNull(password, "A value must be provided for the new keystore password.");
-
-        if (isNullOrEmpty(keystorealias)) {
-            System.out.println("No value was provided for keystore alias, setting to contentanalyst.");
-            keystorealias = DEF_ALIAS;
-        }
 
         if (!new File(certlocation).exists() || !certlocation.endsWith(".p12")) {
             System.err.println(
@@ -200,7 +162,6 @@ public class CertInstaller {
             );
             System.exit(0);
         }
-        ;
     }
 
     /**
@@ -232,10 +193,11 @@ public class CertInstaller {
             KeyStore keyStore = KeyStore.getInstance(DEF_KEYSTORE_TYPE);
             keyStore.load(null, null);
 
-//            X509Certificate cert = new X509CertImpl(new FileInputStream(importedCertFile));
-//            keyStore.setCertificateEntry(keystorealias, cert);
+            try (FileInputStream fis = new FileInputStream(certlocation)) {
+                keyStore.load(fis, password.toCharArray());
+            }
 
-            File newKeystoreFile = new File(CAAT_INSTALL_DIR.getSslDir(), keystorename);
+            File newKeystoreFile = new File(CAAT_INSTALL_DIR.getEtcDir(), KEYSTORENAME);
             if (newKeystoreFile.createNewFile()) {
                 keyStore.store(
                         new FileOutputStream(newKeystoreFile),
@@ -255,8 +217,8 @@ public class CertInstaller {
                 props.load(fis);
             }
             try (FileOutputStream fos = new FileOutputStream(CAAT_INSTALL_DIR.getSslIni().getPath())) {
-                props.setProperty("jetty.keystore", "/etc/ssl/" + keystorename);
-                props.setProperty("jetty.truststore", "etc/ssl/" + keystorename);
+                props.setProperty("jetty.keystore", DEF_KEYSTORE_PATH + KEYSTORENAME);
+                props.setProperty("jetty.truststore", DEF_KEYSTORE_PATH + KEYSTORENAME);
                 props.setProperty("jetty.keystore.password", password);
                 props.setProperty("jetty.truststore.password", password);
                 props.setProperty("jetty.keymanager.password", password);
